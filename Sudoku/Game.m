@@ -10,6 +10,8 @@
 
 @implementation Game
 
+static int guessCount = 0;
+
 - (id)initDefaultTestGame {
     
     NSMutableDictionary *testFields = [[NSMutableDictionary alloc] init];
@@ -82,6 +84,45 @@
     return self;
 }
 
+- (id)init {
+    self = [super init];
+    if (self) {
+        NSString *key;
+        self.fields = [[NSMutableDictionary alloc] initWithCapacity:100];
+        for (int i = 1; i < 10; i++) {
+            for (int j = 1; j < 10; j++) {
+                key = [NSString stringWithFormat:@"%d",i*10+j];
+                Field *f = [[Field alloc] initWithValue:0 andWithPosition:key];
+                f.possible = [[NSMutableArray alloc] initWithArray:@[@1, @2, @3, @4, @5, @6, @7, @8, @9]];
+                [self.fields setValue:f forKey:key];
+            }
+        }
+    }
+    return self;
+}
+
+- (Game *)gameCopy {
+    
+    Game *gameCopy = [[Game alloc] init];
+    [gameCopy replaceFields:self.fields];
+    
+    return gameCopy;
+}
+
+- (void)replaceFields:(NSDictionary *)fields {
+    for (int i = 1; i < 10; i++) {
+        for (int j = 1; j < 10; j++) {
+            NSString *key = [NSString stringWithFormat:@"%d",i*10+j];
+            Field *myField = [self.fields objectForKey:key];
+            Field *theirField = [fields objectForKey:key];
+            myField.value = theirField.value;
+            myField.possible = [theirField.possible mutableCopy];
+        }
+    }
+}
+
+#pragma mark - Main
+
 - (void)mainLoopTimes:(BOOL)once {
     while (true) {
         if(![self check]) {
@@ -99,6 +140,13 @@
         if ([self updateState]) {
             [self printCurrent];
         } else {
+            if (!once && [self guess]) {
+                NSLog(@"Guess count: %d", guessCount);
+                [self.delegate updateAll:self.fields];
+                [self.delegate gameDone];
+                break;
+            }
+            
             if (!once) [self.delegate updateAll:self.fields];
             [self printMissing];
             [self.delegate failedToCompute];
@@ -296,6 +344,41 @@
 }
 
 #pragma mark - Rules
+
+- (BOOL)guess {
+    guessCount++;
+    
+    Field *guessField;
+    for (int n = 2; n < 10; n++) {
+        for (int i = 1; i < 10; i++) {
+            for (int j = 1; j < 10; j++) {
+                NSString *key = [NSString stringWithFormat:@"%d",i*10+j];
+                Field *f = [self.fields objectForKey:key];
+                if (f.value != 0) continue;
+                if (f.possible.count == n) {
+                    guessField = f;
+                    break;
+                }
+            }
+            if (guessField != nil) break;
+        }
+        if (guessField != nil) break;
+    }
+    
+    for (int i = 0; i < guessField.possible.count; i++) {
+        Game *guessGame = [self gameCopy];
+        Field *guessCopyField = [guessGame.fields valueForKey:guessField.position];
+        int number = ((NSNumber *)guessCopyField.possible[i]).intValue;
+        guessCopyField.value = number;
+        [guessGame mainLoopTimes:NO];
+        if ([guessGame check] && [guessGame done]) {
+            [self replaceFields:guessGame.fields];
+            return YES;
+        }
+    }
+    
+    return NO;
+}
 
 - (BOOL)checkSquareRowColumn {
     BOOL removeAtAll = NO;
