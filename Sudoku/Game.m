@@ -100,6 +100,7 @@
             [self printCurrent];
         } else {
             if (!once) [self.delegate updateAll:self.fields];
+            [self printMissing];
             [self.delegate failedToCompute];
             break;
         }
@@ -131,8 +132,9 @@
 - (void)applyRules {
     //apply rules to reduce possible numbers for each field
     [self checkSquareRowColumn];
+    [self checkSingleSquareRowColumn];
+    [self checkPairs];
     //add rule: pairs/triples
-    //add rule: possible number only in one square row/one square column clears other squares/rows/columns
 }
 
 - (NSString *)firstRowFieldKeyFromPrintRow:(int)row {
@@ -192,6 +194,23 @@
         NSLog(@"%@", rowStr);
     }
     NSLog(@"%@\n%@", separatorRow, separatorRow);
+}
+
+- (void)printMissing {
+    for (int i = 1; i < 10; i++) {
+        for (int j = 1; j < 10; j++) {
+            NSString *key = [NSString stringWithFormat:@"%d",i*10+j];
+            Field *f = [self.fields objectForKey:key];
+            if (f.value != 0) continue;
+            NSMutableString *arrayString = [@"[" mutableCopy];
+            for (NSNumber *n in f.possible) {
+                [arrayString appendFormat:@"%d, ", n.intValue];
+            }
+            [arrayString appendString:@"]"];
+            NSLog(@"%@ %@", key, arrayString);
+        }
+    }
+    
 }
 
 #pragma mark - Check
@@ -301,6 +320,112 @@
                 }
             }
         }
+    }
+    return removeAtAll;
+}
+
+- (BOOL)checkPairs {
+    for (int i = 1; i < 10; i++) {
+        for (int j = 1; j < 10; j++) {
+            NSString *key = [NSString stringWithFormat:@"%d", i*10+j];
+            Field *f = [self.fields objectForKey:key];
+            if (f.value != 0) continue;
+            NSArray *row = [self getRow:f];
+            NSArray *column = [self getColumn:f];
+            NSArray *square = [self getSquare:f];
+            
+            if ([self clearPossibleWithPairForField:f withShape:row]) return YES;
+            if ([self clearPossibleWithPairForField:f withShape:column]) return YES;
+            if ([self clearPossibleWithPairForField:f withShape:square]) return YES;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)clearPossibleWithPairForField:(Field *)field withShape:(NSArray *)shape {
+    NSArray *together = [[[NSMutableArray alloc] initWithArray:shape] arrayByAddingObject:field];
+    NSMutableDictionary *fieldPairsForIndex = [[NSMutableDictionary alloc] init];
+    for (int i = 1; i < 10; i++) {
+        NSMutableArray *fields = [NSMutableArray new];
+        for (Field *f in together) {
+            if ([f.possible containsObject:[NSNumber numberWithInt:i]]) [fields addObject:f];
+        }
+        if (fields.count == 2) [fieldPairsForIndex setValue:fields forKey:[NSString stringWithFormat:@"%d", i]];
+    }
+    
+    for (int i = 1; i < 10; i++) {
+        NSArray *fields = [fieldPairsForIndex valueForKey:[NSString stringWithFormat:@"%d", i]];
+        if (fields == nil) continue;
+        for (int j = 1; j < 10; j++) {
+            NSArray *otherFields = [fieldPairsForIndex valueForKey:[NSString stringWithFormat:@"%d", j]];
+            if (otherFields == nil) continue;
+            if (fields == otherFields) continue;
+            if ([fields isEqualToArray:otherFields]) {
+                for (Field *f in fields) {
+                    f.possible = [NSMutableArray arrayWithArray:@[[NSNumber numberWithInt:i], [NSNumber numberWithInt:j]]];
+                }
+                return YES;
+            }
+        }
+    }
+    
+    return NO;
+}
+
+- (BOOL)checkSingleSquareRowColumn {
+    BOOL removeAtAll = NO;
+    for (int i = 1; i < 10; i++) {
+        for (int j = 1; j < 10; j++) {
+            NSString *key = [NSString stringWithFormat:@"%d",i*10+j];
+            Field *f = [self.fields objectForKey:key];
+            if (f.value != 0) continue;
+            NSArray *row = [self getRow:f];
+            NSArray *column = [self getColumn:f];
+            NSArray *square = [self getSquare:f];
+            
+            for (NSNumber *n in f.possible) {
+                NSMutableArray *sharedPossible = [NSMutableArray new];
+                for (Field *g in square) {
+                    if (g.value != 0) continue;
+                    if ([g.possible containsObject:n]) [sharedPossible addObject:g];
+                }
+                
+                //check if it is only row
+                BOOL onlyRow = YES;
+                for (Field *g in sharedPossible) {
+                    if (![row containsObject:g]) onlyRow = NO;
+                }
+                if (onlyRow) {
+                    for (Field *g in row) {
+                        if (g.value != 0) continue;
+                        if ([square containsObject:g]) continue;
+                        if ([g.possible containsObject:n]) {
+                            [g.possible removeObject:n];
+                            removeAtAll = YES;
+                        }
+                    }
+                }
+                
+                //check if it is only column
+                BOOL onlyColumn = YES;
+                for (Field *g in sharedPossible) {
+                    if (![column containsObject:g]) onlyColumn = NO;
+                }
+                if (onlyColumn) {
+                    for (Field *g in column) {
+                        if (g.value != 0) continue;
+                        if ([square containsObject:g]) continue;
+                        if ([g.possible containsObject:n]) {
+                            [g.possible removeObject:n];
+                            removeAtAll = YES;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (removeAtAll) {
+        NSLog(@"Did checkSingleSquareRowColumn");
     }
     return removeAtAll;
 }
